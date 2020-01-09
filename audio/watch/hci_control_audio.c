@@ -1,5 +1,5 @@
 /*
- * Copyright 2019, Cypress Semiconductor Corporation or a subsidiary of
+ * Copyright 2020, Cypress Semiconductor Corporation or a subsidiary of
  * Cypress Semiconductor Corporation. All Rights Reserved.
  *
  * This software, including source code, documentation and related
@@ -1559,9 +1559,9 @@ static void av_app_start_audio_stream( void )
     /* Notify the app that the data is about to start */
     hci_control_audio_send_started_stopped ( av_app_cb.avdt_handle, WICED_TRUE );
 
-#if (WICED_HCI_TRANSPORT == WICED_HCI_TRANSPORT_SPI)
+    /* For timing use SW interrupt instead of I2S.
+     * To use I2S interrupt please remove wiced_audio_use_sw_timing API call and make sure that I2S interface is configured. */
     wiced_audio_use_sw_timing(1);
-#endif
 
     /* Start request for audio samples over uart */
     wiced_audio_start( WICED_TRUE, av_app_cb.audio_route, lcid, &av_app_cb.sbc_caps_configured );

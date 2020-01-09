@@ -1,5 +1,5 @@
 /*
- * Copyright 2019, Cypress Semiconductor Corporation or a subsidiary of
+ * Copyright 2020, Cypress Semiconductor Corporation or a subsidiary of
  * Cypress Semiconductor Corporation. All Rights Reserved.
  *
  * This software, including source code, documentation and related
@@ -59,7 +59,7 @@
  *
  *  Note :
  *   For 20706A2 we are allowing normal PMU sleep.Therefore,the transport will be connected by default.So,no need to wake device.
- *   In other chips 20719B1, 20721B1, 20819A1 please wake the device using configured wake pin. (Check  hci_control_sleep_config.device_wake_gpio_num).
+ *   In other chips 207xx, 208xx please wake the device using configured wake pin. (Check  hci_control_sleep_config.device_wake_gpio_num).
  *
  *  See "BT/BLE Profile Client Control" and "BT Spy" in chip-specifc readme.txt for more information about these apps.
  *
@@ -465,12 +465,7 @@ void hci_control_sleep_configure()
         static wiced_sleep_config_t    hci_control_sleep_config;
         // For UART mode MCU should control wake gpio and configure the sleep
         hci_control_sleep_config.sleep_mode             = WICED_SLEEP_MODE_TRANSPORT;
-#if defined(CYW20719B1) || defined(CYW20719B2) || defined(CYW20721B2)
-        hci_control_sleep_config.device_wake_gpio_num   = WICED_P17;
-#else
-        hci_control_sleep_config.device_wake_gpio_num   = WICED_P12;
-#endif
-
+        hci_control_sleep_config.device_wake_gpio_num   = WICED_GPIO_PIN_BUTTON;
         hci_control_sleep_config.device_wake_mode       = WICED_SLEEP_WAKE_ACTIVE_LOW;
         hci_control_sleep_config.device_wake_source     = WICED_SLEEP_WAKE_SOURCE_GPIO;
         hci_control_sleep_config.host_wake_mode         = WICED_SLEEP_WAKE_ACTIVE_HIGH;

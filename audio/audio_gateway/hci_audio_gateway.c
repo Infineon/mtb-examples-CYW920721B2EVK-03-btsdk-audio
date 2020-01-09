@@ -1,5 +1,5 @@
 /*
- * Copyright 2019, Cypress Semiconductor Corporation or a subsidiary of
+ * Copyright 2020, Cypress Semiconductor Corporation or a subsidiary of
  * Cypress Semiconductor Corporation. All Rights Reserved.
  *
  * This software, including source code, documentation and related
@@ -33,9 +33,9 @@
 
 /** @file
  *
- * AG Plus Device Sample Application for 2070X devices.
+ * AG Plus Device Sample Application for 20xxx devices.
  *
- * This file implements 2070x embedded application controlled over UART.
+ * This file implements 20xxx embedded application controlled over UART.
  * Current version of the application exposes Handsfree Audio Gateway
  * MCU connected over UART can send commands to execute certain functionality
  * while configuration is local in the application including SDP.
@@ -45,8 +45,8 @@
  * the voice recognition feature.
  *
  * To demonstrate the app, work through the following steps.
- * 1. Plug the WICED Bluetooth ( 2070x ) evaluation board into your computer
- * 2. Build and download the application ( to the 2070x board )
+ * 1. Plug the WICED Bluetooth ( 20xxx ) evaluation board into your computer
+ * 2. Build and download the application ( to the 20xxx board )
  * 3. Use ClientControl application to send various commands
  *
  * The sample app performs as a Bluetooth HF AG.
@@ -64,22 +64,9 @@
  *  - Receive NVRAM information from the host
  *
  * Application Instructions
- *  - Build application to produce a downloadable hcd file.  For example
- *    demo.hci_audio_gateway-CYW920706WCDEVAL DIRECT_LOAD=1 build
- *  - Connect a PC terminal to the serial port of the WICED Eval board.
- *  - Start ClientControl application.
- *  - Select the COM port assigned to the WICED Eval board.
- *  - Modify Local Bluetooth address if necessary.
- *  - Enter the full path of the HCD file to download, for example
- *    C:\Users\<username>\Documents\WICED-Studio-X.X\
- *      20706-A2_Bluetooth\build\
- *      hci_audio_gateway-CYW920706WCDEVAL-rom-ram-Wiced-release\
- *      hci_audio_gateway-CYW920706WCDEVAL-rom-ram-Wiced-release.hcd
- *  - Click on the Download button to push the HCD file, Local Address and
- *    peer host information if it was saved before.  Note: User input as well
- *    as peer host information is saved in the Windows registry under
- *    HKCU\Software\Broadcom\HciControl hive.  This is the place to clean
- *    up, for example if information about the paired should be empty.
+ *  - Connect a PC terminal to WICED Eval board.
+ *  - Build and download the application to the board.
+ *  - Run the ClientControl application and open the WICED HCI port
  *
  * BR/EDR
  * - To find BR/EDR devices: Click on "Start BR/EDR Discovery"
@@ -99,7 +86,8 @@
 #include "wiced_bt_cfg.h"
 #include "wiced_memory.h"
 #include "wiced_platform.h"
-#include "hci_control.h"
+#include "wiced_bt_hfp_hf.h"
+#include "hci_audio_gateway.h"
 #include "hci_control_api.h"
 #include "wiced_transport.h"
 #include "wiced_hal_puart.h"
@@ -107,6 +95,8 @@
 #include "string.h"
 #include "wiced_transport.h"
 #include "wiced_hal_wdog.h"
+#include "wiced_bt_trace.h"
+#include "wiced_bt_rfcomm.h"
 
 /*****************************************************************************
 **  Constants
@@ -122,6 +112,7 @@
 #define KEY_INFO_POOL_BUFFER_SIZE               145 //Size of the buffer used for holding the peer device key info
 #define KEY_INFO_POOL_BUFFER_COUNT              10  //Correspond's to the number of peer devices
 
+#define AG_BUTTON_VOLUME_GAIN                   WICED_GPIO_PIN_BUTTON
 
 /*****************************************************************************
 **  Structures
@@ -180,13 +171,13 @@ const wiced_transport_cfg_t  transport_cfg =
     hci_control_tx_complete
 };
 
-
 /******************************************************
  *               Function Declarations
  ******************************************************/
 static void     hci_control_handle_reset_cmd( void );
 static void     hci_control_handle_trace_enable( uint8_t *p_data );
 static void     hci_control_device_handle_command( uint16_t cmd_opcode, uint8_t* p_data, uint32_t data_len );
+static void     hci_control_ag_handle_command(uint16_t opcode, uint8_t* p_data, uint32_t length);
 static void     hci_control_handle_set_local_bda( uint8_t *p_bda );
 static void     hci_control_inquiry( uint8_t enable );
 static void     hci_control_handle_set_visibility( uint8_t discoverability, uint8_t connectability );
@@ -196,12 +187,10 @@ static void     hci_control_send_encryption_changed_evt( uint8_t encrypted , wic
 static void     hci_control_misc_handle_command( uint16_t cmd_opcode, uint8_t* p_data, uint32_t data_len );
 static void     hci_control_misc_handle_get_version( void );
 static wiced_result_t hci_control_management_callback( wiced_bt_management_evt_t event, wiced_bt_management_evt_data_t *p_event_data );
-static void hci_control_handle_set_pairability ( uint8_t pairing_allowed );
+static void     hci_control_handle_set_pairability ( uint8_t pairing_allowed );
 
-extern void wiced_bt_trace_array( const char *string, const uint8_t* array, const uint16_t len );
-extern void hci_control_ag_sco_management_callback( wiced_bt_management_evt_t event, wiced_bt_management_evt_data_t *p_event_data );
-extern void wdog_generate_hw_reset(void);
-extern uint8_t avrc_is_abs_volume_capable( void );
+extern void     wiced_bt_trace_array( const char *string, const uint8_t* array, const uint16_t len );
+extern uint8_t  avrc_is_abs_volume_capable( void );
 
 
 /******************************************************
@@ -220,6 +209,12 @@ APPLICATION_START( )
     // wiced_set_debug_uart(WICED_ROUTE_DEBUG_NONE);
 
     // Set to PUART to see traces on peripheral uart(puart)
+    wiced_hal_puart_init();
+#if defined(CYW20706A2)
+    wiced_hal_puart_set_baudrate( 3000000 );
+#else
+    wiced_hal_puart_configuration( 3000000, PARITY_NONE, STOP_BIT_2 );
+#endif
     wiced_set_debug_uart( WICED_ROUTE_DEBUG_TO_PUART );
 #if ( defined(CYW20706A2) || defined(CYW20735B0) || defined(CYW20719B0) || defined(CYW43012C0) )
     wiced_hal_puart_select_uart_pads( WICED_PUART_RXD, WICED_PUART_TXD, 0, 0);
@@ -235,12 +230,63 @@ APPLICATION_START( )
     // wiced_set_debug_uart(WICED_ROUTE_DEBUG_TO_WICED_UART);
 #endif
 
+    WICED_BT_TRACE( "#######################\n" );
     WICED_BT_TRACE( "Audio Gateway APP START\n" );
+    WICED_BT_TRACE( "#######################\n" );
 
     /* Register the dynamic configurations */
     wiced_bt_stack_init( hci_control_management_callback, &hci_ag_cfg_settings, hci_ag_cfg_buf_pools);
     /* Configure Audio buffer */
     wiced_audio_buffer_initialize (hci_ag_audio_buf_config);
+}
+
+uint8_t vg_button, vg_increase;
+static void button_gpio_interrupt_handler(void *data, uint8_t pin)
+{
+    hfp_ag_session_cb_t *p_scb = &hci_control_cb.ag_scb[0];
+    uint8_t temp_vg = vg_button;
+    uint8_t gpio_status;
+
+    gpio_status = wiced_hal_gpio_get_pin_input_status( (uint32_t)pin );
+
+    /* only handle the release-button event */
+    if (gpio_status != WICED_TRUE)
+    {
+        return ;
+    }
+
+    if (vg_increase == TRUE)
+    {
+        if (vg_button < HFP_VGM_VGS_MAX)
+            vg_button++;
+    }
+    else
+    {
+        if (vg_button > HFP_VGM_VGS_MIN)
+            vg_button--;
+    }
+
+    if ( (hfp_ag_send_VGM_to_hf(p_scb, vg_button) == FALSE) ||
+            (hfp_ag_send_VGS_to_hf(p_scb, vg_button) == FALSE) )
+    {
+        vg_button = temp_vg;
+        return;
+    }
+
+    if (vg_button == HFP_VGM_VGS_MAX)
+        vg_increase = FALSE;
+    else if (vg_button == HFP_VGM_VGS_MIN)
+        vg_increase = TRUE;
+}
+
+void volume_gain_button_init( void )
+{
+    /* Configure GPIO PIN# as input, pull up and interrupt on rising edge and output value as high
+     *  (pin should be configured before registering interrupt handler ) */
+    wiced_hal_gpio_configure_pin( AG_BUTTON_VOLUME_GAIN, WICED_GPIO_BUTTON_SETTINGS( GPIO_EN_INT_RISING_EDGE ), GPIO_PIN_OUTPUT_LOW );
+    wiced_hal_gpio_register_pin_for_interrupt( AG_BUTTON_VOLUME_GAIN, button_gpio_interrupt_handler, NULL );
+    vg_button = HFP_VGM_VGS_DEFAULT;
+    vg_increase = TRUE;
 }
 
 /*
@@ -288,6 +334,27 @@ void hci_control_write_eir( void )
     return;
 }
 
+void hci_control_ag_init( void )
+{
+    hfp_ag_session_cb_t *p_scb = &hci_control_cb.ag_scb[0];
+    wiced_bt_dev_status_t result;
+    int i;
+
+    memset( &hci_control_cb, 0, sizeof( hci_control_cb ) );
+
+    for ( i = 0; i < HCI_CONTROL_AG_NUM_SCB; i++, p_scb++ )
+    {
+        p_scb->app_handle = ( uint16_t ) ( i + 1 );
+
+        if(i == 0)
+            p_scb->hf_profile_uuid = UUID_SERVCLASS_HF_HANDSFREE;
+        else
+            p_scb->hf_profile_uuid = UUID_SERVCLASS_HEADSET;
+    }
+
+    hfp_ag_startup( &hci_control_cb.ag_scb[0], HCI_CONTROL_AG_NUM_SCB, BT_AUDIO_HFP_SUPPORTED_FEATURES );
+}
+
 /*
  *  Pass protocol traces up through the UART
  */
@@ -331,12 +398,15 @@ wiced_result_t hci_control_management_callback( wiced_bt_management_evt_t event,
             /* Perform the rfcomm init before hf start up */
             wiced_bt_rfcomm_init( 200, 5 );
 
-            hci_control_ag_startup( );
+            hci_control_ag_init( );
 
             p_key_info_pool = wiced_bt_create_pool( KEY_INFO_POOL_BUFFER_SIZE, KEY_INFO_POOL_BUFFER_COUNT );
             WICED_BT_TRACE( "wiced_bt_create_pool %x\n", p_key_info_pool );
 
+            volume_gain_button_init(); //Use WICED_GPIO_BUTTON to send "+VGM(S)" to HS
+
             hci_control_send_device_started_evt( );
+
             break;
 
         case BTM_DISABLED_EVT:
@@ -452,28 +522,10 @@ wiced_result_t hci_control_management_callback( wiced_bt_management_evt_t event,
             break;
 
         case BTM_SCO_CONNECTED_EVT:
-        {
-            wiced_bt_sco_connected_t *p_sco_data = ( wiced_bt_sco_connected_t * )p_event_data;
-            hci_control_ag_sco_management_callback( event, p_event_data );
-            break;
-        }
-
         case BTM_SCO_DISCONNECTED_EVT:
-        {
-            wiced_bt_sco_disconnected_t *p_sco_data = ( wiced_bt_sco_disconnected_t * )p_event_data;
-            hci_control_ag_sco_management_callback( event, p_event_data );
-            break;
-        }
-
         case BTM_SCO_CONNECTION_REQUEST_EVT:
-        {
-            wiced_bt_sco_connection_request_t *p_sco_data = ( wiced_bt_sco_connection_request_t * )p_event_data;
-            hci_control_ag_sco_management_callback( event, p_event_data );
-            break;
-        }
-
         case BTM_SCO_CONNECTION_CHANGE_EVT:
-            hci_control_ag_sco_management_callback( event, p_event_data );
+            hfp_ag_sco_management_callback( event, p_event_data );
             break;
 
         default:
@@ -574,12 +626,48 @@ void hci_control_device_handle_command( uint16_t cmd_opcode, uint8_t* p_data, ui
         hci_control_handle_set_visibility( p_data[0], p_data[1] );
         break;
 
-    case  HCI_CONTROL_COMMAND_SET_PAIRING_MODE:
+    case HCI_CONTROL_COMMAND_SET_PAIRING_MODE:
         hci_control_handle_set_pairability( p_data[0] );
         break;
 
     default:
         WICED_BT_TRACE( "??? Unknown command code\n" );
+        break;
+    }
+}
+
+/*
+ * Handle Handsfree commands received over UART.
+ */
+void hci_control_ag_handle_command( uint16_t opcode, uint8_t* p_data, uint32_t length )
+{
+    uint16_t handle;
+    uint8_t  hs_cmd;
+    uint8_t  *p = ( uint8_t * ) p_data;
+
+    switch ( opcode )
+    {
+    case HCI_CONTROL_AG_COMMAND_CONNECT:
+        hfp_ag_connect( p );
+        break;
+
+    case HCI_CONTROL_AG_COMMAND_DISCONNECT:
+        handle = p[0] | ( p[1] << 8 );
+        hfp_ag_disconnect( handle );
+        break;
+
+    case HCI_CONTROL_AG_COMMAND_OPEN_AUDIO:
+        handle = p[0] | ( p[1] << 8 );
+        hfp_ag_audio_open( handle );
+        break;
+
+    case HCI_CONTROL_AG_COMMAND_CLOSE_AUDIO:
+        handle = p[0] | ( p[1] << 8 );
+        hfp_ag_audio_close( handle );
+        break;
+
+    default:
+        WICED_BT_TRACE ( "hci_control_ag_handle_command - unkn own opcode: %u %u\n", opcode);
         break;
     }
 }
@@ -649,7 +737,7 @@ static void hci_control_handle_set_pairability ( uint8_t pairing_allowed )
             }
         }
 
-    hci_control_cb.pairing_allowed = pairing_allowed;
+        hci_control_cb.pairing_allowed = pairing_allowed;
         wiced_bt_set_pairable_mode( hci_control_cb.pairing_allowed, 0 );
         WICED_BT_TRACE( " Set the pairing allowed to %d \n", hci_control_cb.pairing_allowed );
     }
@@ -971,7 +1059,7 @@ void hci_control_delete_nvram( int nvram_id ,wiced_bool_t from_host)
     hci_control_nvram_chunk_t *p1, *p2;
 
     if ( p_nvram_first == NULL )
-	return;
+        return;
 
     /* Special case when need to remove the first chunk */
     if ( ( p_nvram_first != NULL ) && ( p_nvram_first->nvram_id == nvram_id ) )
@@ -1065,148 +1153,6 @@ void hci_control_tx_complete( wiced_transport_buffer_pool_t* p_pool )
     WICED_BT_TRACE ( "hci_control_tx_complete :%x \n", p_pool );
 }
 
-/*
- * This utility copies a character string to another
- */
-char *utl_strcpy( char *p_dst, char *p_src )
-{
-    register char *pd = p_dst;
-    register char *ps = p_src;
-
-    while ( *ps )
-        *pd++ = *ps++;
-
-    *pd++ = 0;
-
-    return ( p_dst );
-}
-
-/*
- * This utility function converts a uint16_t to a string.  The string is
- * NULL-terminated.  The length of the string is returned;
- * Returns Length of string.
- */
-uint8_t utl_itoa( uint16_t i, char *p_s )
-{
-    uint16_t  j, k;
-    char     *p = p_s;
-    BOOLEAN   fill = FALSE;
-
-    if ( i == 0 )
-    {
-        /* take care of zero case */
-        *p++ = '0';
-    }
-    else
-    {
-        for ( j = 10000; j > 0; j /= 10 )
-        {
-            k = i / j;
-            i %= j;
-            if ( k > 0 || fill || ( j == 1 ) )
-            {
-              *p++ = k + '0';
-              fill = TRUE;
-            }
-        }
-    }
-    *p = 0;
-    return ( uint8_t ) ( p - p_s );
-}
-
-/*
- * This utility function compares two strings in uppercase. String p_s must be
- * uppercase.  String p_t is converted to uppercase if lowercase.  If p_s ends
- * first, the substring match is counted as a match.
- * Returns 0 if strings match, nonzero otherwise.
- */
-int utl_strucmp ( char *p_s, char *p_t )
-{
-    char c;
-
-    while ( *p_s && *p_t )
-    {
-        c = *p_t++;
-        if ( c >= 'a' && c <= 'z' )
-        {
-            c -= 0x20;
-        }
-        if ( *p_s++ != c )
-        {
-            return -1;
-        }
-    }
-    /* if p_t hit null first, no match */
-    if ( *p_t == 0 && *p_s != 0 )
-    {
-        return 1;
-    }
-    /* else p_s hit null first, count as match */
-    else
-    {
-        return 0;
-    }
-}
-
-/*
- * This utility counts the characteers in a string
- * Returns  number of characters ( excluding the terminating '0' )
- */
-int utl_strlen( char *p_str )
-{
-    register int  xx = 0;
-
-    while ( *p_str++ != 0 )
-        xx++;
-
-    return ( xx );
-}
-
-/*
- * This utility function converts a character string to an integer.  Acceptable
- * values in string are 0-9.  If invalid string or string value too large, -1
- * is returned.  Leading spaces are skipped.
- * Returns          Integer value or -1 on error.
- */
-INT16 utl_str2int( char *p_s )
-{
-    INT32   val = 0;
-
-    for ( ; *p_s == ' ' && *p_s != 0; p_s++ );
-
-    if ( *p_s == 0 ) return -1;
-
-    for ( ;; )
-    {
-        if ( ( *p_s < '0' ) || ( *p_s > '9' ) ) return -1;
-
-        val += ( INT32 ) ( *p_s++ - '0' );
-
-        if ( val > 32767 ) return -1;
-
-        if ( *p_s == 0 )
-        {
-            return ( INT16 ) val;
-        }
-        else
-        {
-            val *= 10;
-        }
-    }
-}
-
-/*
- * Copy bd addr b to a.
- */
-void utl_bdcpy( BD_ADDR a, BD_ADDR b )
-{
-    int i;
-
-    for ( i = BD_ADDR_LEN; i != 0; i-- )
-    {
-        *a++ = *b++;
-    }
-}
 
 /* Handle misc command group */
 void hci_control_misc_handle_command( uint16_t cmd_opcode, uint8_t* p_data, uint32_t data_len )
@@ -1225,7 +1171,20 @@ void hci_control_misc_handle_get_version( void )
 {
     uint8_t   tx_buf[15];
     uint8_t   cmd = 0;
+// If this is 20819 or 20820, we do detect the device from hardware
+#define RADIO_ID    0x006007c0
+#define RADIO_20820 0x80
+#define CHIP_20820  20820
+#define CHIP_20819  20819
+#if (CHIP==CHIP_20819) || (CHIP==CHIP_20820)
+    uint32_t chip = CHIP_20819;
+    if (*(UINT32*) RADIO_ID & RADIO_20820)
+    {
+        chip = CHIP_20820;
+    }
+#else
     uint32_t  chip = CHIP;
+#endif
 
     tx_buf[cmd++] = WICED_SDK_MAJOR_VER;
     tx_buf[cmd++] = WICED_SDK_MINOR_VER;
