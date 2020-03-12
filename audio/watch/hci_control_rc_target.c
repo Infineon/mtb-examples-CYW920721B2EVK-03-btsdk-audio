@@ -311,7 +311,7 @@ wiced_result_t avrc_app_hci_initiate_connection ( uint8_t* p_data, uint32_t len 
 /*
  *  Called by MCU app to disconnect AVRC profile
  */
-wiced_result_t avrc_app_hci_disconnect_connection (void)
+wiced_result_t avrc_target_app_hci_disconnect_connection (void)
 {
     wiced_result_t result = WICED_SUCCESS;
 
@@ -346,7 +346,7 @@ uint8_t hci_control_avrc_handle_command( uint16_t cmd_opcode, uint8_t *p_data, u
             break;
 
         case HCI_CONTROL_AVRC_TARGET_COMMAND_DISCONNECT:             /* Disconnect a connection to the peer. */
-            status = avrc_app_hci_disconnect_connection() == WICED_SUCCESS ? HCI_CONTROL_STATUS_SUCCESS : HCI_CONTROL_STATUS_FAILED;
+            status = avrc_target_app_hci_disconnect_connection() == WICED_SUCCESS ? HCI_CONTROL_STATUS_SUCCESS : HCI_CONTROL_STATUS_FAILED;
             break;
 
 #ifdef APP_AVRC_TRACK_INFO_SUPPORTED

@@ -231,7 +231,7 @@ wiced_result_t avrc_app_hci_connect ( uint8_t* p_data, uint32_t len )
 
 /**
  *
- * Function         avrc_app_hci_disconnect_connection
+ * Function         avrc_controller_app_hci_disconnect_connection
  *
  *                  Send MCU request for disconnect from a peer.
  *
@@ -242,7 +242,7 @@ wiced_result_t avrc_app_hci_connect ( uint8_t* p_data, uint32_t len )
  *
  * @return          wiced_result_t
  */
-wiced_result_t avrc_app_hci_disconnect_connection ( uint16_t handle )
+wiced_result_t avrc_controller_app_hci_disconnect_connection ( uint16_t handle )
 {
     wiced_result_t result = WICED_NOT_CONNECTED;
 
@@ -864,7 +864,7 @@ uint8_t hci_control_avrc_handle_ctrlr_command( uint16_t cmd_opcode, uint8_t *p_d
         break;
 
     case HCI_CONTROL_AVRC_CONTROLLER_COMMAND_DISCONNECT:                   /* Disconnect a connection to the peer. */
-        status = avrc_app_hci_disconnect_connection( handle ) == WICED_SUCCESS ? HCI_CONTROL_STATUS_SUCCESS : HCI_CONTROL_STATUS_FAILED;
+        status = avrc_controller_app_hci_disconnect_connection( handle ) == WICED_SUCCESS ? HCI_CONTROL_STATUS_SUCCESS : HCI_CONTROL_STATUS_FAILED;
         break;
 
     case HCI_CONTROL_AVRC_CONTROLLER_COMMAND_PLAY:                         /* Passthrough Play Command */

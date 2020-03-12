@@ -171,7 +171,11 @@
 #ifdef CYW20719B1
 #include "wiced_bt_event.h"
 #endif
-
+#ifdef CYW20706A2
+#if (WICED_HCI_TRANSPORT == WICED_HCI_TRANSPORT_SPI)
+#include "wiced_trans_spi.h"
+#endif
+#endif
 /*****************************************************************************
 **  Constants
 *****************************************************************************/
@@ -271,6 +275,7 @@ const wiced_transport_cfg_t transport_cfg =
             .dev_role            = SPI_SLAVE_ROLE,
             .spi_gpio_cfg        = SLAVE1_P02_CS_P03_CLK_P00_MOSI_P25_MISO, /**< Pins to use for the data and clk lines. Refer  spiffdriver.h for details */
             .spi_pin_pull_config = INPUT_PIN_FLOATING,
+#elif (CYW20719B2 || CYW20721B2)
 #else
             .dev_role            = SPI_SLAVE,
             .spi_gpio_cfg        = SPI_GPIO_CFG, /**< Pins to use for the data and clk lines. Refer  spiffdriver.h for details */
@@ -280,10 +285,12 @@ const wiced_transport_cfg_t transport_cfg =
             .endian              = SPI_MSB_FIRST,
             .polarity            = SPI_SS_ACTIVE_LOW,
             .mode                = SPI_MODE_0,
-            .cs_pin              =  0,
 #ifdef CYW20706A2
+            .cs_pin              =  0,
             .slave_ready_pin     =  WICED_P15
+#elif (CYW20719B2 || CYW20721B2)
 #else
+            .cs_pin              =  0,
             .slave_ready_pin     =  WICED_P06
 #endif
         },
@@ -336,7 +343,7 @@ void hci_control_init( void )
     memset( &hci_control_cb, 0, sizeof( hci_control_cb ) );
 
 #ifdef WICED_BT_TRACE_ENABLE
-#ifdef CYW43012C0
+#ifdef NO_PUART_SUPPORT
     wiced_set_debug_uart(WICED_ROUTE_DEBUG_TO_WICED_UART);
 #else
     wiced_set_debug_uart( WICED_ROUTE_DEBUG_TO_PUART );

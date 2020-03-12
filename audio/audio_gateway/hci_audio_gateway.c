@@ -97,6 +97,7 @@
 #include "wiced_hal_wdog.h"
 #include "wiced_bt_trace.h"
 #include "wiced_bt_rfcomm.h"
+#include "wiced_timer.h"
 
 /*****************************************************************************
 **  Constants
@@ -192,7 +193,6 @@ static void     hci_control_handle_set_pairability ( uint8_t pairing_allowed );
 extern void     wiced_bt_trace_array( const char *string, const uint8_t* array, const uint16_t len );
 extern uint8_t  avrc_is_abs_volume_capable( void );
 
-
 /******************************************************
  *               Function Definitions
  ******************************************************/
@@ -240,7 +240,12 @@ APPLICATION_START( )
     wiced_audio_buffer_initialize (hci_ag_audio_buf_config);
 }
 
-uint8_t vg_button, vg_increase;
+#define DEBOUNCE_TIME           100     /* unit: ms */
+#define BUTTON_LONG_TIMEOUT     10000   /* unit: ms */
+#define BUTTON_PERIODIC_TIME    50      /* unit: ms */
+uint8_t vg_button = 0, vg_increase = 0, vg_press = 0;
+uint16_t pressed_duration = 0;
+wiced_timer_t button_timer;
 static void button_gpio_interrupt_handler(void *data, uint8_t pin)
 {
     hfp_ag_session_cb_t *p_scb = &hci_control_cb.ag_scb[0];
@@ -249,11 +254,30 @@ static void button_gpio_interrupt_handler(void *data, uint8_t pin)
 
     gpio_status = wiced_hal_gpio_get_pin_input_status( (uint32_t)pin );
 
-    /* only handle the release-button event */
-    if (gpio_status != WICED_TRUE)
+    /* only handle the valid release-button event (including press and release) */
+    if (gpio_status == WICED_FALSE)
     {
-        return ;
+        if (vg_press == 0)
+        {
+            vg_press = 1;
+            wiced_start_timer(&button_timer, BUTTON_PERIODIC_TIME);
+            pressed_duration = 0;
+        }
+        return;
     }
+    else if (gpio_status == WICED_TRUE)
+    {
+        /* discard repeated release interrupt */
+        if (vg_press == 0)
+            return;
+
+        vg_press = 0;
+        wiced_stop_timer(&button_timer);
+        if (pressed_duration < DEBOUNCE_TIME)
+            return;
+    }
+    else
+        return;
 
     if (vg_increase == TRUE)
     {
@@ -279,14 +303,26 @@ static void button_gpio_interrupt_handler(void *data, uint8_t pin)
         vg_increase = TRUE;
 }
 
+static void timeout_cb( uint32_t cb_params )
+{
+    pressed_duration += BUTTON_PERIODIC_TIME;
+    if (pressed_duration >= BUTTON_LONG_TIMEOUT)
+    {
+        wiced_stop_timer(&button_timer);
+        vg_press = 0;
+        pressed_duration = 0;
+    }
+}
+
 void volume_gain_button_init( void )
 {
     /* Configure GPIO PIN# as input, pull up and interrupt on rising edge and output value as high
      *  (pin should be configured before registering interrupt handler ) */
-    wiced_hal_gpio_configure_pin( AG_BUTTON_VOLUME_GAIN, WICED_GPIO_BUTTON_SETTINGS( GPIO_EN_INT_RISING_EDGE ), GPIO_PIN_OUTPUT_LOW );
+    wiced_hal_gpio_configure_pin( AG_BUTTON_VOLUME_GAIN, WICED_GPIO_BUTTON_SETTINGS( GPIO_EN_INT_BOTH_EDGE ), GPIO_PIN_OUTPUT_LOW );
     wiced_hal_gpio_register_pin_for_interrupt( AG_BUTTON_VOLUME_GAIN, button_gpio_interrupt_handler, NULL );
     vg_button = HFP_VGM_VGS_DEFAULT;
     vg_increase = TRUE;
+    wiced_init_timer(&button_timer, timeout_cb, (uint32_t)NULL, WICED_MILLI_SECONDS_PERIODIC_TIMER);
 }
 
 /*
