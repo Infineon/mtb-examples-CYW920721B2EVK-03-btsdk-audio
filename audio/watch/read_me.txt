@@ -99,8 +99,10 @@ Project Settings
 Application specific project settings are as below -
 
 SLEEP_SUPPORTED
-    This option allows device to enter low power mode.
+    This option allows device to enter low power mode. By default the option is off.
+    When sleep is enabled, ClientControl will not be able to communicate with embedded
+    app unless GPIO is asserted.
 
 COEX_SUPPORTED
-    This option enables BT and Wi-Fi Coexistence.
+    This option enables BT and Wi-Fi Coexistence. By default the option is off.
 -------------------------------------------------------------------------------

@@ -1561,7 +1561,9 @@ static void av_app_start_audio_stream( void )
 
     /* For timing use SW interrupt instead of I2S.
      * To use I2S interrupt please remove wiced_audio_use_sw_timing API call and make sure that I2S interface is configured. */
+#ifndef CYW43012C0
     wiced_audio_use_sw_timing(1);
+#endif
 
     /* Start request for audio samples over uart */
     wiced_audio_start( WICED_TRUE, av_app_cb.audio_route, lcid, &av_app_cb.sbc_caps_configured );

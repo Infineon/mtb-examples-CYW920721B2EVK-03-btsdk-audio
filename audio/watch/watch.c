@@ -128,6 +128,10 @@
  *     "Write no rsp" : Write hex value without response to remote handle
  *     "Value Notify" : Write notification value to the remote handle
  *     "Value Indicate" : Write indication value to the remote handle
+ *
+ *  SPI Transport:
+ *  - Update the functionality of WICED_P06 from WICED_GPIO to WICED_SPI_1_SLAVE_READY in
+ *    platform_gpio_pins[] to get SPI transport working for 20719B2
  */
 
 /*******************************************************************************
