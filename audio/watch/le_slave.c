@@ -689,21 +689,4 @@ void slave_timeout(uint32_t arg)
             UUID_ATTRIBUTE_PRIMARY_SERVICE, 1, 0xffff);
 }
 
-
-/*
- * This utility copies a character string to another
- */
-char *utl_strcpy( char *p_dst, char *p_src )
-{
-    register char *pd = p_dst;
-    register char *ps = p_src;
-
-    while ( *ps )
-        *pd++ = *ps++;
-
-    *pd++ = 0;
-
-    return ( p_dst );
-}
-
 #endif

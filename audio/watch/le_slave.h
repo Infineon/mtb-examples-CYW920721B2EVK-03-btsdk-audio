@@ -40,6 +40,7 @@
 #include "wiced_bt_gatt.h"
 #include "wiced_app.h"
 #include "wiced_timer.h"
+#include "wiced_bt_utils.h"
 
 // Subunit initialization complete callback
 typedef void (*init_complete_cback_t) (int);
@@ -106,7 +107,6 @@ void ancs_client_indication_handler(wiced_bt_gatt_operation_complete_t *p_data);
 void ams_client_indication_handler(wiced_bt_gatt_operation_complete_t *p_data);
 
 void ancs_perform_action( uint32_t uid, uint32_t action_id );
-char *utl_strcpy( char *p_dst, char *p_src );
 
 void le_slave_app_init(void);
 void le_slave_connection_up(wiced_bt_gatt_connection_status_t *p_conn_status);

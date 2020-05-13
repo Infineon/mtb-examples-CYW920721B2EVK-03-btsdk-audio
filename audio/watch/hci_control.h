@@ -40,6 +40,7 @@
 #define HCI_CONTROL_H
 
 #include "wiced_app.h"
+#include "wiced_bt_utils.h"
 
 /*****************************************************************************
 **  Constants that define the capabilities and configuration
@@ -251,8 +252,5 @@ extern void hci_control_misc_handle_command( uint16_t cmd_opcode, uint8_t* p_dat
 extern uint8_t wiced_bt_get_number_of_buffer_pools ( void );
 
 extern hci_control_test_command_t test_command;
-
-extern BD_ADDR  bd_addr_any;
-extern BD_ADDR  bd_addr_null;
 
 #endif /* BTA_HS_INT_H */
