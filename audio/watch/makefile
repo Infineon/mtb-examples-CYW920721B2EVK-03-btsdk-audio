@@ -1,5 +1,5 @@
 #
-# Copyright 2020, Cypress Semiconductor Corporation or a subsidiary of
+# Copyright 2016-2020, Cypress Semiconductor Corporation or a subsidiary of
 # Cypress Semiconductor Corporation. All Rights Reserved.
 #
 # This software, including source code, documentation and related
@@ -101,6 +101,7 @@ UART?=AUTO
 XIP?=xip
 TRANSPORT?=UART
 export ENABLE_DEBUG?=0
+BT_AUDIO_SHIELD ?= 0
 
 SLEEP_SUPPORT ?= 0
 COEX_SUPPORT ?= 0
@@ -110,7 +111,7 @@ ifeq ($(ENABLE_DEBUG),1)
 CY_APP_DEFINES+=-DENABLE_DEBUG=1
 endif
 
-ifneq ($(filter CYW920819EVB-02 CYW920820EVB-02,$(TARGET)),)
+ifneq ($(filter CYW9M2BASE-43012BT CYW920819EVB-02 CYW920820EVB-02,$(TARGET)),)
 WICED_MAX_LE_CLIENT_CONN = 1
 else
 WICED_MAX_LE_CLIENT_CONN = 3
@@ -155,6 +156,11 @@ ifeq ($(TARGET),$(filter $(TARGET),  CYW920719B2Q40EVB-01 CYW920721B2EVK-01 CYW9
 CY_APP_PATCH_LIBS += wiced_audio_source_lib.a
 endif
 
+ifneq ($(filter $(CY_TARGET_DEVICE), 43012C0),)
+#CY_APP_PATCH_LIBS += wiced_audio_sink_lib.a
+#CY_APP_PATCH_LIBS += wiced_sco_lib.a
+endif
+
 ifeq ($(TARGET),CYW943012EVB-04-BT)
 CY_APP_DEFINES += -DWICED_HCI_BAUDRATE=115200
 endif # TARGET
@@ -180,6 +186,34 @@ ifeq ($(OTA_FW_UPGRADE),1)
 COMPONENTS += fw_upgrade_lib
 endif
 
+# check if BT_AUDIO_SHIELD (BT_AUDIO Codec board) is needed
+ifeq ($(BT_AUDIO_SHIELD), 0)
+# No BT_AUDIO_SHIELD needed
+else
+ifeq ($(BT_AUDIO_SHIELD), 2)
+
+  ifeq ($(TARGET), CYW920719B2Q40EVB-01)
+    $(info Use a dedicated platform GPIO definition)
+    ifeq ($(TRANSPORT), SPI)
+      # This GPIO definition file is incompatible with SPI.
+      $(error SPI incompatible with BT_AUDIO_SHIELD (GPIO conflict))
+    endif
+    DISABLE_COMPONENTS += bsp_design_modus
+    COMPONENTS += CYW920719B2Q40EVB-01_design_modus
+  else
+    $(error BT_AUDIO_SHIELD not supported by the platform)
+  endif
+
+  # Add the AudioManager, BT_AUDIO2 board and 47L32 Codec driver libraries
+  COMPONENTS += audiomanager
+  COMPONENTS += cyw9bt_audio2
+  COMPONENTS += codec_cs47l35_lib
+  CY_APP_DEFINES += -DCS47L35_CODEC_ENABLE
+  CY_APP_DEFINES += -DAUDIO_SHIELD_EVK_VER=3
+else # BT_AUDIO_SHIELD == 2
+  $(error BT_AUDIO_SHIELD (version $(BT_AUDIO_SHIELD) not supported))
+endif # BT_AUDIO_SHIELD != 2
+endif
 ################################################################################
 # Paths
 ################################################################################

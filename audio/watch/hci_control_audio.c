@@ -1,5 +1,5 @@
 /*
- * Copyright 2020, Cypress Semiconductor Corporation or a subsidiary of
+ * Copyright 2016-2020, Cypress Semiconductor Corporation or a subsidiary of
  * Cypress Semiconductor Corporation. All Rights Reserved.
  *
  * This software, including source code, documentation and related
@@ -60,6 +60,9 @@
 #include "wiced_transport.h"
 #if ( defined(CYW20706A2) || defined(CYW20719B1) || defined(CYW20719B2) || defined(CYW43012C0) || defined(CYW20721B1) || defined(CYW20721B2) || defined(CYW20819A1) )
 #include "wiced_bt_event.h"
+#endif
+#ifdef AUDIO_SHIELD_EVK_VER
+#include "wiced_audio_manager.h"
 #endif
 
 /******************************************************************************
@@ -164,6 +167,10 @@ short single_tone_audio_buf[256];
 #endif
 #endif
 
+#ifdef AUDIO_SHIELD_EVK_VER
+static int32_t stream_id = WICED_AUDIO_MANAGER_STREAM_ID_INVALID;
+#endif
+
 /******************************************************************************
  *                          Function Declarations
  ******************************************************************************/
@@ -186,6 +193,10 @@ static uint16_t a2dp_app_create_sep( void );
 static void av_app_send_setconfiguration( uint32_t cb_params );
 uint8_t BTM_SetPacketTypes (BD_ADDR remote_bda, uint16_t pkt_types);
 wiced_result_t av_app_initiate_sdp( BD_ADDR bda );
+#ifdef AUDIO_SHIELD_EVK_VER
+static void av_app_am_audio_start(void);
+static void av_app_am_audio_stop(void);
+#endif
 
 wiced_timer_t hci_control_audio_conn_idle_timer;
 wiced_timer_t hci_control_audio_set_cfg_timer;
@@ -1559,6 +1570,13 @@ static void av_app_start_audio_stream( void )
     /* Notify the app that the data is about to start */
     hci_control_audio_send_started_stopped ( av_app_cb.avdt_handle, WICED_TRUE );
 
+#ifdef AUDIO_SHIELD_EVK_VER
+    /* Start A2DP Source in FW */
+    wiced_audio_start( WICED_TRUE, av_app_cb.audio_route, lcid, &av_app_cb.sbc_caps_configured );
+
+    /* Start External Audio Codec */
+    av_app_am_audio_start();
+#else
     /* For timing use SW interrupt instead of I2S.
      * To use I2S interrupt please remove wiced_audio_use_sw_timing API call and make sure that I2S interface is configured. */
 #ifndef CYW43012C0
@@ -1567,6 +1585,7 @@ static void av_app_start_audio_stream( void )
 
     /* Start request for audio samples over uart */
     wiced_audio_start( WICED_TRUE, av_app_cb.audio_route, lcid, &av_app_cb.sbc_caps_configured );
+#endif
 }
 #endif
 
@@ -1594,6 +1613,11 @@ static void av_app_stop_audio_stream( void )
     av_app_cb.audio_stream_state = AV_STREAM_STATE_STOPPING;
 
     wiced_audio_suspend ( lcid, &av_app_audio_stopped_callback );
+
+#ifdef AUDIO_SHIELD_EVK_VER
+    /* Stop External Audio Codec */
+    av_app_am_audio_stop();
+#endif
 }
 
 static int av_app_set_audio_stream_state_serialized( void *data )
@@ -1872,9 +1896,13 @@ wiced_result_t a2dp_app_hci_control_connect(uint8_t* p_data, uint32_t len)
 
         STREAM_TO_BDADDR(bd_addr,p_data);
 
+#ifdef AUDIO_SHIELD_EVK_VER
+        WICED_BT_TRACE("Ignore route from Host and use I2S\n");
+        av_app_cb.audio_route = AUDIO_ROUTE_I2S;
+#else
         /* store routing parameter */
         av_app_cb.audio_route = *p_data;
-
+#endif
         WICED_BT_TRACE( "[%s]: <%B> Route: %d, Sample Rate: %d, Channel Config: %d, \n",
                 __FUNCTION__, bd_addr, av_app_cb.audio_route, av_app_cb.audio_sf, av_app_cb.audio_chcfg );
 
@@ -2186,3 +2214,111 @@ void av_app_init( void )
 
     WICED_BT_TRACE ("[%s] exit\n", __FUNCTION__ );
 }
+
+#ifdef AUDIO_SHIELD_EVK_VER
+/*
+ * av_app_am_audio_start
+ * Start AudioManager for A2DP Source Stream
+ */
+static void av_app_am_audio_start(void)
+{
+    audio_config_t audio_config;
+    wiced_result_t status;
+
+    /* If Codec Stream not yet opened, opee it */
+    if (stream_id == WICED_AUDIO_MANAGER_STREAM_ID_INVALID)
+    {
+        stream_id = wiced_am_stream_open(CAPTURE);
+        if (stream_id == WICED_AUDIO_MANAGER_STREAM_ID_INVALID)
+        {
+            WICED_BT_TRACE("ERR: wiced_am_stream_open failed\n");
+            return;
+        }
+    }
+
+    switch(av_app_cb.audio_sf)
+    {
+        case AUDIO_SF_16K:
+            audio_config.sr = 16000;
+            break;
+
+        case AUDIO_SF_32K:
+            audio_config.sr = 32000;
+            break;
+
+        case AUDIO_SF_44_1K:
+            audio_config.sr = 44100;
+            break;
+
+        case AUDIO_SF_48K:
+            audio_config.sr = 48000;
+        break;
+
+        default:
+            audio_config.sr = 44100;
+        break;
+    }
+
+    audio_config.channels =  2;
+    audio_config.bits_per_sample = DEFAULT_BITSPSAM;
+    audio_config.volume = AM_VOL_LEVEL_HIGH - 2;
+    audio_config.mic_gain = AM_VOL_LEVEL_HIGH - 2;
+    audio_config.sink = AM_HEADPHONES;
+
+    /* Configure the Codec */
+    status = wiced_am_stream_set_param(stream_id, AM_AUDIO_CONFIG, &audio_config);
+    if (status != WICED_SUCCESS)
+    {
+        WICED_BT_TRACE("ERR: wiced_am_stream_set_param failed\n");
+        return;
+    }
+
+    /* Start the Codec */
+    status = wiced_am_stream_start(stream_id);
+    if (status != WICED_SUCCESS)
+    {
+        WICED_BT_TRACE("ERR: wiced_am_stream_start failed\n");
+        return;
+    }
+
+    /* Set Codec Gain */
+    status= wiced_am_stream_set_param(stream_id, AM_MIC_GAIN_LEVEL, &audio_config.mic_gain);
+    if (status != WICED_SUCCESS)
+    {
+        WICED_BT_TRACE("ERR: wiced_am_stream_set_param failed\n");
+        return;
+    }
+    WICED_BT_TRACE("External Codec Started\n");
+}
+
+/*
+ * av_app_am_audio_stop
+ * Stop AudioManager for A2DP Source Stream
+ */
+static void av_app_am_audio_stop(void)
+{
+    wiced_result_t status;
+
+    if (stream_id == WICED_AUDIO_MANAGER_STREAM_ID_INVALID)
+    {
+        WICED_BT_TRACE("ERR: av_app_am_audio_stop Codec not opened\n");
+        return;
+    }
+
+    status = wiced_am_stream_stop(stream_id);
+    if (status != WICED_SUCCESS)
+    {
+        WICED_BT_TRACE("ERR: wiced_am_stream_stop failed\n");
+        return;
+    }
+
+    status = wiced_am_stream_close(stream_id);
+    if (status != WICED_SUCCESS)
+    {
+        WICED_BT_TRACE("ERR: wiced_am_stream_close failed\n");
+        return;
+    }
+
+    stream_id = WICED_AUDIO_MANAGER_STREAM_ID_INVALID;
+}
+#endif

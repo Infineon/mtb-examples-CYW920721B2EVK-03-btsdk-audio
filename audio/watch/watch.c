@@ -1,5 +1,5 @@
 /*
- * Copyright 2020, Cypress Semiconductor Corporation or a subsidiary of
+ * Copyright 2016-2020, Cypress Semiconductor Corporation or a subsidiary of
  * Cypress Semiconductor Corporation. All Rights Reserved.
  *
  * This software, including source code, documentation and related
@@ -180,6 +180,10 @@
 #include "wiced_trans_spi.h"
 #endif
 #endif
+#ifdef AUDIO_SHIELD_EVK_VER
+#include "wiced_audio_manager.h"
+#endif
+
 /*****************************************************************************
 **  Constants
 *****************************************************************************/
@@ -658,11 +662,15 @@ wiced_result_t hci_control_management_callback( wiced_bt_management_evt_t event,
         wiced_bt_coex_enable();
 #endif
 #endif
+#ifdef AUDIO_SHIELD_EVK_VER
+            /* Initialize AudioManager */
+            wiced_am_init();
+#endif
 #ifdef CYW20706A2
             // Tell Host that App is started
             hci_control_send_device_started_evt();
 #endif
-
+            WICED_BT_TRACE("Free Bytes After Init:%d\n", wiced_memory_get_free_bytes());
             break;
 
         case BTM_DISABLED_EVT:

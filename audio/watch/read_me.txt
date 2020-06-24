@@ -22,7 +22,8 @@ To demonstrate the app, follow these steps -
 
 1. Build and download the application to the WICED board.
 2. Open the BT/BLE Profile Client Control application and open the port for WICED HCI for the device.
-   Default baud rate configured in the application is 3M.
+   Default baud rate configured in the application is defined by the BSP HCI_UART_DEAULT_BAUD #define,
+   usually either 3M or 115200 depending on board UART capabilities.
 3. Use Client Control application to send various commands mentioned below.
 4. Run the BTSpy program to view protocol and application traces.
 
