@@ -83,8 +83,8 @@
 #include "wiced_result.h"
 
 #include "hci_control_api.h"
-#include "ancs_client.h"
-#include "ams_client.h"
+#include "wiced_bt_ancs.h"
+#include "wiced_bt_ams.h"
 #include "hci_control.h"
 #include "string.h"
 #include "wiced_memory.h"
@@ -100,9 +100,6 @@
 /******************************************************
  *               Function Prototypes
  ******************************************************/
-extern int ancs_client_initialize(uint16_t conn_id, uint16_t s_handle, uint16_t e_handle, init_complete_cback_t initialize_complete_callback, ancs_notification_cback_t message_received_callback);
-extern int ams_client_initialize(uint16_t conn_id, uint16_t s_handle, uint16_t e_handle, init_complete_cback_t initialize_complete_callback, ams_notification_cback_t message_received_callback);
-extern void ams_send_remote_command(uint16_t opcode);
 
 /*******************************************************************
  * Function Prototypes
@@ -145,22 +142,86 @@ watch_app_state_t watch_app_state;
  *               Function Definitions
  ******************************************************/
 
+static void le_slave_ancs_client_event_handler_notification(wiced_bt_ancs_client_notification_data_t *p_data)
+{
+    // Allocating a buffer to send the trace
+    uint8_t *p_tx_buf = (uint8_t *) wiced_bt_get_buffer(sizeof(wiced_bt_ancs_client_notification_data_t));
+
+    WICED_BT_TRACE("ANCS notification UID:%d command:%d category:%d flags:%04x\n", p_data->basic.notification_uid, p_data->basic.command, p_data->basic.category, p_data->basic.flags);
+    WICED_BT_TRACE("T%s %s %s\n", p_data->info.title, p_data->info.message, p_data->info.positive_action_label, p_data->info.negative_action_label);
+
+    if (p_tx_buf)
+    {
+        int len;
+        p_tx_buf[0] = p_data->basic.notification_uid & 0xff;
+        p_tx_buf[1] = (p_data->basic.notification_uid >> 8) & 0xff;
+        p_tx_buf[2] = (p_data->basic.notification_uid >> 16) & 0xff;
+        p_tx_buf[3] = (p_data->basic.notification_uid >> 24) & 0xff;
+
+        p_tx_buf[4] = p_data->basic.command;
+
+        p_tx_buf[5] = p_data->basic.category;
+
+        p_tx_buf[6] = p_data->basic.flags;
+
+        len = 7;
+
+        utl_strcpy((char *) &p_tx_buf[len], (char *) p_data->info.title);
+        len += (strlen((const char *) p_data->info.title) + 1);
+
+        utl_strcpy((char *) &p_tx_buf[len],(char *) p_data->info.message);
+        len += (strlen((const char *) p_data->info.message) + 1);
+
+        utl_strcpy((char *) &p_tx_buf[len], (char *) p_data->info.positive_action_label);
+        len += (strlen((const char *) p_data->info.positive_action_label) + 1);
+
+        utl_strcpy((char *) &p_tx_buf[len], (char *) p_data->info.negative_action_label);
+        len += (strlen((const char *) p_data->info.negative_action_label) + 1);
+
+        wiced_transport_send_data(HCI_CONTROL_ANCS_EVENT_NOTIFICATION, p_tx_buf, len);
+        wiced_bt_free_buffer( p_tx_buf );
+    }
+}
+
+static void le_slave_ancs_client_event_handler(wiced_bt_ancs_client_event_t event, wiced_bt_ancs_client_event_data_t *p_data)
+{
+    switch (event)
+    {
+    case WICED_BT_ANCS_CLIENT_EVENT_INITIALIZED:
+        watch_init_next_client();
+        break;
+
+    case WICED_BT_ANCS_CLIENT_EVENT_NOTIFICATION:
+        le_slave_ancs_client_event_handler_notification(p_data->notification.p_data);
+        break;
+
+    default:
+        break;
+    }
+}
+
 /*
  * This function is executed in the BTM_ENABLED_EVT management callback.
  */
 void le_slave_app_init(void)
 {
+    wiced_bt_ancs_client_config_t ancs_client_config = {0};
+
     memset(&watch_hostinfo, 0, sizeof(watch_hostinfo));
     memset(&watch_app_state, 0, sizeof(watch_app_state));
-
-    //Creating a buffer pool for holding the peer devices's key info
-    ancs_client_event_pool = (uint8_t *)wiced_bt_create_pool(sizeof(ancs_queued_event_t),
-            ANCS_MAX_QUEUED_NOTIFICATIONS);
 
     if (wiced_init_timer(&watch_app_state.timer, slave_timeout, 0,
             WICED_SECONDS_TIMER ) != WICED_SUCCESS)
     {
         WICED_BT_TRACE("Err: wiced_init_timer le_slave failed\n");
+    }
+
+    /* Initialize the ANCS client. */
+    ancs_client_config.p_event_handler = &le_slave_ancs_client_event_handler;
+
+    if (wiced_bt_ancs_client_initialize(&ancs_client_config) == WICED_FALSE)
+    {
+        WICED_BT_TRACE("Err: wiced_bt_ancs_client_initialize failed\n");
     }
 }
 
@@ -176,9 +237,9 @@ void le_slave_connection_up(wiced_bt_gatt_connection_status_t *p_conn_status)
     watch_app_state.addr_type = p_conn_status->addr_type;
     watch_app_state.transport = p_conn_status->transport;
 
-    ancs_client_connection_up(p_conn_status);
+    wiced_bt_ancs_client_connection_up(p_conn_status);
 
-    ams_client_connection_up(p_conn_status);
+    wiced_bt_ams_client_connection_up(p_conn_status);
 
     /* Connected as Slave. Start discovery in couple of seconds to give time to the peer device
      * to find/configure our services */
@@ -194,9 +255,9 @@ void le_slave_connection_down(wiced_bt_gatt_connection_status_t *p_conn_status)
 
     wiced_stop_timer(&watch_app_state.timer);
 
-    ancs_client_connection_down(p_conn_status);
+    wiced_bt_ancs_client_connection_down(p_conn_status);
 
-    ams_client_connection_down(p_conn_status);
+    wiced_bt_ams_client_connection_down(p_conn_status);
 }
 
 
@@ -286,10 +347,10 @@ wiced_bt_gatt_status_t le_slave_gatt_discovery_result(wiced_bt_gatt_discovery_re
     switch (watch_app_state.init_state)
     {
     case WATCH_INIT_STATE_ANCS:
-        ancs_client_discovery_result(p_data);
+        wiced_bt_ancs_client_discovery_result(p_data);
         break;
     case WATCH_INIT_STATE_AMS:
-        ams_client_discovery_result(p_data);
+        wiced_bt_ams_client_discovery_result(p_data);
         break;
     default:
         if (p_data->discovery_type  == GATT_DISCOVER_SERVICES_ALL)
@@ -335,10 +396,10 @@ wiced_bt_gatt_status_t le_slave_gatt_discovery_complete(wiced_bt_gatt_discovery_
     switch (watch_app_state.init_state)
     {
     case WATCH_INIT_STATE_ANCS:
-        ancs_client_discovery_complete(p_data);
+        wiced_bt_ancs_client_discovery_complete(p_data);
         break;
     case WATCH_INIT_STATE_AMS:
-        ams_client_discovery_complete(p_data);
+        wiced_bt_ams_client_discovery_complete(p_data);
         break;
     default:
         if (p_data->disc_type == GATT_DISCOVER_SERVICES_ALL)
@@ -396,12 +457,12 @@ void watch_process_read_rsp(wiced_bt_gatt_operation_complete_t *p_data)
     if ((p_data->response_data.att_value.handle >= watch_hostinfo.ancs_s_handle) &&
              (p_data->response_data.att_value.handle <= watch_hostinfo.ancs_e_handle))
     {
-        ancs_client_read_rsp(p_data);
+        wiced_bt_ancs_client_read_rsp(p_data);
     }
     else if ((p_data->response_data.att_value.handle >= watch_hostinfo.ams_s_handle) &&
              (p_data->response_data.att_value.handle <= watch_hostinfo.ams_e_handle))
     {
-        ams_client_read_rsp(p_data);
+        wiced_bt_ams_client_read_rsp(p_data);
     }
 }
 
@@ -416,12 +477,12 @@ void watch_process_write_rsp(wiced_bt_gatt_operation_complete_t *p_data)
     if ((p_data->response_data.handle >= watch_hostinfo.ancs_s_handle) &&
         (p_data->response_data.handle <= watch_hostinfo.ancs_e_handle))
     {
-        ancs_client_write_rsp(p_data);
+        wiced_bt_ancs_client_write_rsp(p_data);
     }
     else if ((p_data->response_data.handle >= watch_hostinfo.ams_s_handle) &&
              (p_data->response_data.handle <= watch_hostinfo.ams_e_handle))
     {
-        ams_client_write_rsp(p_data);
+        wiced_bt_ams_client_write_rsp(p_data);
     }
 }
 
@@ -436,12 +497,12 @@ void watch_notification_handler(wiced_bt_gatt_operation_complete_t *p_data)
     if ((p_data->response_data.att_value.handle >= watch_hostinfo.ancs_s_handle) &&
         (p_data->response_data.att_value.handle < watch_hostinfo.ancs_e_handle))
     {
-        ancs_client_notification_handler(p_data);
+        wiced_bt_ancs_client_notification_handler(p_data);
     }
     else if ((p_data->response_data.att_value.handle >= watch_hostinfo.ams_s_handle) &&
         (p_data->response_data.att_value.handle < watch_hostinfo.ams_e_handle))
     {
-        ams_client_notification_handler(p_data);
+        wiced_bt_ams_client_notification_handler(p_data);
     }
 }
 
@@ -454,74 +515,81 @@ void watch_indication_handler(wiced_bt_gatt_operation_complete_t *p_data)
     if ((p_data->response_data.att_value.handle >= watch_hostinfo.ancs_s_handle) &&
         (p_data->response_data.att_value.handle < watch_hostinfo.ancs_e_handle))
     {
-        ancs_client_indication_handler(p_data);
+        wiced_bt_ancs_client_indication_handler(p_data);
     }
     else if ((p_data->response_data.att_value.handle >= watch_hostinfo.ams_s_handle) &&
         (p_data->response_data.att_value.handle < watch_hostinfo.ams_e_handle))
     {
-        ams_client_indication_handler(p_data);
+        wiced_bt_ams_client_indication_handler(p_data);
     }
 }
 
-/*
- * Callback to be called by ANCS client when initialization is complete
- */
-void watch_ancs_initialization_callback(int result)
+static void le_slave_ams_client_event_handler_notification(wiced_bt_ams_client_notification_id_t opcode, uint16_t data_len, uint8_t *p_data)
 {
-    watch_init_next_client();
-}
+    uint8_t event_data[60];
+    uint16_t event_code;
+    uint8_t i = 0;
 
-/*
- * Callback to be called by AMS client when initialization is complete
- */
-void watch_ams_initialization_callback(int result)
-{
-    watch_init_next_client();
-}
+    event_data[i++] = 0;    // handle
+    event_data[i++] = 0;
 
-/*
- * Callback to be called by ANCS client when new notification is received
- */
-void watch_ancs_message_resceived_callback(ancs_event_t *p_ancs_event)
-{
-    // Allocating a buffer to send the trace
-    uint8_t  *p_tx_buf = ( uint8_t* )wiced_bt_get_buffer( sizeof ( ancs_event_t ) );
-
-    WICED_BT_TRACE("ANCS notification UID:%d command:%d category:%d flags:%04x\n", p_ancs_event->notification_uid, p_ancs_event->command, p_ancs_event->category, p_ancs_event->flags);
-    WICED_BT_TRACE("T%s %s %s\n", p_ancs_event->title, p_ancs_event->message, p_ancs_event->positive_action_label, p_ancs_event->negative_action_label);
-
-    if ( p_tx_buf )
+    switch (opcode)
     {
-        int len;
-        p_tx_buf[0] = p_ancs_event->notification_uid & 0xff;
-        p_tx_buf[1] = (p_ancs_event->notification_uid >> 8) & 0xff;
-        p_tx_buf[2] = (p_ancs_event->notification_uid >> 16) & 0xff;
-        p_tx_buf[3] = (p_ancs_event->notification_uid >> 24) & 0xff;
-        p_tx_buf[4] = p_ancs_event->command;
-        p_tx_buf[5] = p_ancs_event->category;
-        p_tx_buf[6] = p_ancs_event->flags;
-        len = 7;
-        utl_strcpy((char*)&p_tx_buf[len], (char*)p_ancs_event->title );
-        len += (strlen ( (const char*)p_ancs_event->title ) + 1);
-        utl_strcpy((char *)&p_tx_buf[len],(char*) p_ancs_event->message );
-        len += (strlen ( (const char*)p_ancs_event->message ) + 1);
-        utl_strcpy((char *)&p_tx_buf[len], (char *)p_ancs_event->positive_action_label );
-        len += (strlen ( (const char*)p_ancs_event->positive_action_label ) + 1);
-        utl_strcpy((char*)&p_tx_buf[len], (char *)p_ancs_event->negative_action_label );
-        len += (strlen ((const char*) p_ancs_event->negative_action_label ) + 1);
-        wiced_transport_send_data( HCI_CONTROL_ANCS_EVENT_NOTIFICATION, p_tx_buf, len );
-        wiced_bt_free_buffer( p_tx_buf );
+    case WICED_BT_AMS_CLIENT_NOTIFICATION_PLAYER_NAME:
+        event_code = HCI_CONTROL_AVRC_CONTROLLER_EVENT_PLAYER_CHANGE;
+        break;
+
+    case WICED_BT_AMS_CLIENT_NOTIFICATION_PLAY_STATUS:
+        event_code = HCI_CONTROL_AVRC_CONTROLLER_EVENT_PLAY_STATUS;
+        break;
+
+    case WICED_BT_AMS_CLIENT_NOTIFICATION_PALY_POSITION:
+        event_code = HCI_CONTROL_AVRC_CONTROLLER_EVENT_PLAY_POSITION;
+        break;
+
+    case WICED_BT_AMS_CLIENT_NOTIFICATION_SETTING_CHANGE:
+        event_data[i++] = 1;    // number of settings
+
+        event_code = HCI_CONTROL_AVRC_CONTROLLER_EVENT_SETTING_CHANGE;
+        break;
+
+    case WICED_BT_AMS_CLIENT_NOTIFICATION_TRACK_INFO:
+        event_data[i++] = 0;    // status
+
+        event_code = HCI_CONTROL_AVRC_CONTROLLER_EVENT_CURRENT_TRACK_INFO;
+        break;
+
+    case WICED_BT_AMS_CLIENT_NOTIFICATION_VOLUME_LEVEL:
+        event_code = HCI_CONTROL_AVRC_TARGET_EVENT_VOLUME_LEVEL;
+        break;
+
+    default:
+        return;
     }
 
-    wiced_bt_free_buffer(p_ancs_event);
+    if (data_len > (sizeof(event_data) - i))
+        data_len = (sizeof(event_data) - i);
+
+    memcpy((void *) &event_data[i], (void *) p_data, data_len);
+
+    wiced_transport_send_data(event_code, event_data, data_len + i);
 }
 
-/*
- * Callback to be called by AMS client when new notification is received
- */
-void watch_ams_message_resceived_callback(uint16_t opcode, uint8_t *p_data, uint16_t len)
+static void le_slave_ams_client_event_handler(wiced_bt_ams_client_event_t event, wiced_bt_ams_client_event_data_t *p_event_data)
 {
-   wiced_transport_send_data(opcode, p_data, len);
+    switch (event)
+    {
+    case WICED_BT_AMS_CLIENT_EVENT_INITIALIZED:
+        watch_init_next_client();
+        break;
+
+    case WICED_BT_AMS_CLIENT_EVENT_NOTIFICATION:
+        le_slave_ams_client_event_handler_notification(p_event_data->notification.opcode, p_event_data->notification.data_len, p_event_data->notification.p_data);
+        break;
+
+    default:
+        break;
+    }
 }
 
 /*
@@ -529,22 +597,30 @@ void watch_ams_message_resceived_callback(uint16_t opcode, uint8_t *p_data, uint
  */
 void watch_init_next_client(void)
 {
+    wiced_bt_ams_client_config_t ams_client_config;
+
     WICED_BT_TRACE("%s state:%d", __FUNCTION__, watch_app_state.init_state);
 
     switch (watch_app_state.init_state)
     {
     case WATCH_INIT_STATE_NONE:
         watch_app_state.init_state = WATCH_INIT_STATE_ANCS;
-        if (ancs_client_initialize(watch_app_state.conn_id, watch_hostinfo.ancs_s_handle, watch_hostinfo.ancs_e_handle,
-            &watch_ancs_initialization_callback, (ancs_notification_cback_t)&watch_ancs_message_resceived_callback))
+
+        if (wiced_bt_ancs_client_start(watch_app_state.conn_id, watch_hostinfo.ancs_s_handle, watch_hostinfo.ancs_e_handle))
             break;
         /* No break on purpose (if not ANCS Service found) */
 
     case WATCH_INIT_STATE_ANCS:
         watch_app_state.init_state = WATCH_INIT_STATE_AMS;
-        if (ams_client_initialize(watch_app_state.conn_id, watch_hostinfo.ams_s_handle, watch_hostinfo.ams_e_handle,
-            &watch_ams_initialization_callback, &watch_ams_message_resceived_callback))
+
+        ams_client_config.conn_id           = watch_app_state.conn_id;
+        ams_client_config.s_handle          = watch_hostinfo.ams_s_handle;
+        ams_client_config.e_handle          = watch_hostinfo.ams_e_handle;
+        ams_client_config.p_event_handler   = &le_slave_ams_client_event_handler;
+
+        if (wiced_bt_ams_client_initialize(&ams_client_config))
             break;
+
         /* No break on purpose  (if not AMS Service found) */
 
     case WATCH_INIT_STATE_AMS:
@@ -552,30 +628,6 @@ void watch_init_next_client(void)
         // We are done with initial settings, and need to stay connected.
         watch_app_state.init_state = WATCH_INIT_STATE_NONE;
     }
-}
-
-wiced_bt_gatt_status_t watch_util_set_client_config_descriptor(uint16_t conn_id, uint16_t handle, uint16_t value)
-{
-    wiced_bt_gatt_status_t status = WICED_BT_GATT_SUCCESS;
-    uint8_t                buf[sizeof(wiced_bt_gatt_value_t) + 1];
-    wiced_bt_gatt_value_t *p_write = ( wiced_bt_gatt_value_t* )buf;
-    uint16_t               u16 = value;
-
-    // Allocating a buffer to send the write request
-    memset(buf, 0, sizeof(buf));
-
-    p_write->handle   = handle;
-    p_write->offset   = 0;
-    p_write->len      = 2;
-    p_write->auth_req = GATT_AUTH_REQ_NONE;
-    p_write->value[0] = u16 & 0xff;
-    p_write->value[1] = (u16 >> 8) & 0xff;
-
-    // Register with the server to receive notification
-    status = wiced_bt_gatt_send_write ( watch_app_state.conn_id, GATT_WRITE, p_write );
-
-    WICED_BT_TRACE("wiced_bt_gatt_send_write %d\n", status);
-    return status;
 }
 
 void watch_util_send_discover(uint16_t conn_id, wiced_bt_gatt_discovery_type_t type, uint16_t uuid,
@@ -626,39 +678,6 @@ wiced_bool_t watch_util_send_read_by_type(uint16_t conn_id, uint16_t s_handle, u
 
     WICED_BT_TRACE("wiced_bt_gatt_send_read %d\n", status);
     return (status == WICED_BT_SUCCESS);
-}
-
-/*
- * Handle received command over UART.
- */
-uint8_t le_slave_proc_rx_cmd( uint16_t opcode, uint8_t *p_data, uint32_t length )
-{
-    WICED_BT_TRACE("cmd_opcode 0x%02x\n", opcode);
-
-    switch (opcode)
-    {
-    case HCI_CONTROL_ANCS_COMMAND_ACTION:
-        ancs_perform_action( p_data[4] + (p_data[5] << 8) + (p_data[6] << 16) + (p_data[7] << 24), p_data[8] );
-        break;
-
-    case HCI_CONTROL_AVRC_CONTROLLER_COMMAND_PLAY:
-    case HCI_CONTROL_AVRC_CONTROLLER_COMMAND_PAUSE:
-    case HCI_CONTROL_AVRC_CONTROLLER_COMMAND_NEXT_TRACK:
-    case HCI_CONTROL_AVRC_CONTROLLER_COMMAND_PREVIOUS_TRACK:
-    case HCI_CONTROL_AVRC_CONTROLLER_COMMAND_VOLUME_UP:
-    case HCI_CONTROL_AVRC_CONTROLLER_COMMAND_VOLUME_DOWN:
-    case HCI_CONTROL_AVRC_CONTROLLER_COMMAND_SET_REPEAT_MODE:
-    case HCI_CONTROL_AVRC_CONTROLLER_COMMAND_SET_SHUFFLE_MODE:
-    case HCI_CONTROL_AVRC_CONTROLLER_COMMAND_BEGIN_FAST_FORWARD:
-    case HCI_CONTROL_AVRC_CONTROLLER_COMMAND_BEGIN_REWIND:
-        ams_send_remote_command(opcode);
-        break;
-
-    default:
-        WICED_BT_TRACE("cmd_opcode 0x%02x ignored\n", opcode);
-        break;
-    }
-    return 0;
 }
 
 /*

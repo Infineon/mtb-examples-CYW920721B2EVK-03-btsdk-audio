@@ -69,6 +69,8 @@
 #define HANDLE_AVRC_TARGET                      0x10002
 // SDP Record handle for AVRC TARGET
 #define HANDLE_AVRC_CONTROLLER                  0x10003
+// SDP Record handle for HFP Audio Gateway
+#define HANDLE_HFP_AG                           0x10004
 // SDP Record handle for PNP (Device Information)
 #define HANDLE_PNP                              0x10006
 
@@ -82,7 +84,13 @@
 #define AUDIO_TX_BUFFER_SIZE        11000
 #endif
 
+/* It needs 15K bytes for HFP(mSBC use mainly) */
+#if (WICED_APP_HFP_AG_INCLUDED == WICED_TRUE)
+#define AUDIO_BUF_SIZE_MAIN_HFP     (15 * 1024)
+#define AUDIO_CODEC_BUFFER_SIZE     AUDIO_BUF_SIZE_MAIN_HFP
+#else
 #define AUDIO_CODEC_BUFFER_SIZE     0x2000
+#endif
 
 const uint8_t pincode[WICED_PIN_CODE_LEN] = { 0x30, 0x30, 0x30, 0x30 };
 
@@ -180,8 +188,8 @@ const wiced_bt_cfg_settings_t wiced_bt_cfg_settings =
 
     .rfcomm_cfg =                                                   /* RFCOMM configuration */
     {
-        .max_links                      = 0,                                                           /**< Maximum number of simultaneous connected remote devices*/
-        .max_ports                      = 0                                                            /**< Maximum number of simultaneous RFCOMM ports */
+        .max_links                      = WICED_BT_HFP_AG_MAX_CONN,                                    /**< Maximum number of simultaneous connected remote devices*/
+        .max_ports                      = WICED_BT_HFP_AG_MAX_CONN                                     /**< Maximum number of simultaneous RFCOMM ports */
     },
 
     .l2cap_application =                                            /* Application managed l2cap protocol configuration */
@@ -237,7 +245,9 @@ const wiced_bt_cfg_settings_t wiced_bt_cfg_settings =
 #endif
 };
 
-#if (WICED_APP_AUDIO_SRC_INCLUDED == WICED_TRUE) && (WICED_APP_AUDIO_RC_TG_INCLUDED == WICED_TRUE) && (WICED_APP_AUDIO_RC_CT_INCLUDED == WICED_TRUE)
+#if (WICED_APP_AUDIO_SRC_INCLUDED == WICED_TRUE) && (WICED_APP_AUDIO_RC_TG_INCLUDED == WICED_TRUE) && (WICED_APP_AUDIO_RC_CT_INCLUDED == WICED_TRUE) && (WICED_APP_HFP_AG_INCLUDED == WICED_TRUE)
+#define SLEN ((56 + 2) + (56 + 2) + (59 + 2) + (49 + 2) + (69 + 2))
+#elif (WICED_APP_AUDIO_SRC_INCLUDED == WICED_TRUE) && (WICED_APP_AUDIO_RC_TG_INCLUDED == WICED_TRUE) && (WICED_APP_AUDIO_RC_CT_INCLUDED == WICED_TRUE)
 #define SLEN ((56 + 2) + (56 + 2) + (59 + 2) + (69 + 2))
 #elif (WICED_APP_AUDIO_RC_TG_INCLUDED == WICED_TRUE) && (WICED_APP_AUDIO_RC_CT_INCLUDED == WICED_TRUE)
 #define SLEN ((56 + 2) + (59 + 2) + (69 + 2))
@@ -323,6 +333,18 @@ const uint8_t wiced_app_cfg_sdp_record[] =
                 SDP_ATTR_UUID16(UUID_SERVCLASS_AV_REMOTE_CONTROL),
                 SDP_ATTR_VALUE_UINT2(AVRC_REV_1_5),
         SDP_ATTR_UINT2(ATTR_ID_SUPPORTED_FEATURES, AVRC_SUPF_CT_CAT2),
+#endif
+
+#if (WICED_APP_HFP_AG_INCLUDED == WICED_TRUE)
+    // SDP record for HF ( total length of record: 51 )
+    SDP_ATTR_SEQUENCE_1( 49 ),                                              // 2 bytes, length of the record
+        SDP_ATTR_RECORD_HANDLE( HANDLE_HFP_AG ),                            // 8 byte ( handle=0x10004 )
+        SDP_ATTR_ID( ATTR_ID_SERVICE_CLASS_ID_LIST ),                       // 3 bytes
+            SDP_ATTR_SEQUENCE_1( 6 ),                                       // 2 bytes
+                SDP_ATTR_UUID16( UUID_SERVCLASS_AG_HANDSFREE ),             // 3 bytes ServiceClass0 UUID_SERVCLASS_AG_HANDSFREE
+                SDP_ATTR_UUID16( UUID_SERVCLASS_GENERIC_AUDIO ),            // 3 bytes ServiceClass1 UUID_SERVCLASS_GENERIC_AUDIO
+        SDP_ATTR_RFCOMM_PROTOCOL_DESC_LIST( 1 ),                            // 17 bytes ( SCN=1 )
+        SDP_ATTR_PROFILE_DESC_LIST( UUID_SERVCLASS_AG_HANDSFREE, 0x0105 ),  // 13 bytes UUID_SERVCLASS_HF_HANDSFREE, version 0x0105
 #endif
 
     // SDP record Device ID (total = 69 + 2 = 71)

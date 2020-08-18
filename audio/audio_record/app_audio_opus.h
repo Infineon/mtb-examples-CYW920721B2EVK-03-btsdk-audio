@@ -30,37 +30,22 @@
  * of such system or application assumes all risk of such use and in doing
  * so agrees to indemnify Cypress against all liability.
  */
+#define OPUS_ENC_SAMPLING_RATE  16000
+#define OPUS_ENC_BITRATE        32000
+#define OPUS_ENC_FRAME_SIZE     320     // frame_size must be equal to (sampling_rate / N)
+                                        // where N = 400, 200, 100, 50, 25, 50/3
+#define OPUS_ENC_PACKET_SIZE    (OPUS_ENC_BITRATE * 20 / 1000 / 8) // 20ms
 
-/** @file
- *
- * Runtime Bluetooth stack configuration parameters
- *
- */
+typedef enum
+{
+    OPUS_STATUS_SUCCESS             = 0,
+    OPUS_STATUS_PENDING             = 1,
+    OPUS_STATUS_ERROR               = 2,
+    OPUS_STATUS_INVALID_PARAMETERS  = 3,
+} opus_status_t;
 
-#ifndef _WICED_APP_CFG_H_
-#define _WICED_APP_CFG_H_
-
-#include <stdint.h>
-
-#include "wiced_bt_sdp.h"
-#include "wiced_bt_cfg.h"
-#include "wiced_bt_audio.h"
-
-#if (WICED_APP_HFP_AG_INCLUDED == WICED_TRUE)
-#define WICED_BT_HFP_AG_MAX_CONN    2
-#else
-#define WICED_BT_HFP_AG_MAX_CONN    0
-#endif
-
-extern const wiced_bt_cfg_settings_t wiced_bt_cfg_settings;
-
-//const wiced_bt_cfg_buf_pool_t *wiced_app_cfg_buf_pools_get(void);
-extern const wiced_bt_cfg_buf_pool_t wiced_app_cfg_buf_pools[];
-extern const wiced_bt_audio_config_buffer_t wiced_bt_audio_buf_config;
-extern int wiced_app_cfg_get_num_buf_pools(void);
-
-//uint8_t *wiced_app_cfg_sdp_record_get(void);
-extern const uint8_t wiced_app_cfg_sdp_record[];
-extern uint16_t wiced_app_cfg_sdp_record_get_size(void);
-
-#endif /* _WICED_APP_CFG_H_ */
+#define OPUS_PACKET_LENGTH_32KBPS   80
+opus_status_t app_opus_encode_init(void);
+opus_status_t app_opus_encode(uint8_t *opus_buffer, int16_t *pcm_buffer_stero, uint32_t samples);
+void app_opus_decode_init(uint8_t *data);
+wiced_result_t app_opus_decode(int16_t *pcm_buffer, uint8_t *opus_encode_buffer, uint32_t request_samples, uint32_t *consumed_size);

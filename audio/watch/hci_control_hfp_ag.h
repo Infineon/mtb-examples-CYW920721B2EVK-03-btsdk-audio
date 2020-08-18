@@ -33,34 +33,22 @@
 
 /** @file
  *
- * Runtime Bluetooth stack configuration parameters
- *
+ * Hands-free profile Audio Gateway support for watch application
  */
 
-#ifndef _WICED_APP_CFG_H_
-#define _WICED_APP_CFG_H_
+#ifndef __HCI_CONTROL_HFP_AG_H_
+#define __HCI_CONTROL_HFP_AG_H_
 
-#include <stdint.h>
+#define HCI_CONTROL_AG_NUM_SCB          2           /* Max simultaneous connections to HFs */
 
-#include "wiced_bt_sdp.h"
-#include "wiced_bt_cfg.h"
-#include "wiced_bt_audio.h"
+/*
+ * Audio Gateway init
+ */
+void hci_control_ag_init( void );
 
-#if (WICED_APP_HFP_AG_INCLUDED == WICED_TRUE)
-#define WICED_BT_HFP_AG_MAX_CONN    2
-#else
-#define WICED_BT_HFP_AG_MAX_CONN    0
-#endif
+/*
+ * Handle Handsfree commands received over UART.
+ */
+void hci_control_ag_handle_command( uint16_t opcode, uint8_t* p_data, uint32_t length );
 
-extern const wiced_bt_cfg_settings_t wiced_bt_cfg_settings;
-
-//const wiced_bt_cfg_buf_pool_t *wiced_app_cfg_buf_pools_get(void);
-extern const wiced_bt_cfg_buf_pool_t wiced_app_cfg_buf_pools[];
-extern const wiced_bt_audio_config_buffer_t wiced_bt_audio_buf_config;
-extern int wiced_app_cfg_get_num_buf_pools(void);
-
-//uint8_t *wiced_app_cfg_sdp_record_get(void);
-extern const uint8_t wiced_app_cfg_sdp_record[];
-extern uint16_t wiced_app_cfg_sdp_record_get_size(void);
-
-#endif /* _WICED_APP_CFG_H_ */
+#endif /* __HCI_CONTROL_HFP_AG_H_ */

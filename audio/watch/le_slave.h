@@ -49,12 +49,6 @@ typedef void (*gap_client_init_complete_cback_t) (int, uint8_t *p_name, uint8_t 
 // Time of the day notification
 typedef void (*time_notification_cback_t)(uint8_t *time_data, int len);
 
-// ANCS event notification
-typedef void (*ancs_notification_cback_t)(void *p_ancs_event);
-
-// AMS event notification
-typedef void (*ams_notification_cback_t)(uint16_t opcode, uint8_t *p_data, uint16_t len);
-
 // Application state
 typedef struct
 {
@@ -85,28 +79,9 @@ void watch_util_send_discover(uint16_t conn_id, wiced_bt_gatt_discovery_type_t t
 void watch_util_send_read_by_handle(uint16_t conn_id, uint16_t handle);
 wiced_bool_t watch_util_send_read_by_type(uint16_t conn_id, uint16_t s_handle, uint16_t e_handle, uint16_t uuid);
 
-wiced_bt_gatt_status_t ancs_client_discovery_result(wiced_bt_gatt_discovery_result_t *p_data);
-wiced_bt_gatt_status_t ams_client_discovery_result(wiced_bt_gatt_discovery_result_t *p_data);
-
-wiced_bt_gatt_status_t ancs_client_discovery_complete(wiced_bt_gatt_discovery_complete_t *p_data);
-wiced_bt_gatt_status_t ams_client_discovery_complete(wiced_bt_gatt_discovery_complete_t *p_data);
-
-void ancs_client_read_rsp(wiced_bt_gatt_operation_complete_t *p_data);
-void ams_client_read_rsp(wiced_bt_gatt_operation_complete_t *p_data);
-
-void ancs_client_write_rsp(wiced_bt_gatt_operation_complete_t *p_data);
-void ams_client_write_rsp(wiced_bt_gatt_operation_complete_t *p_data);
-
-void ancs_client_notification_handler(wiced_bt_gatt_operation_complete_t *p_data);
-void ams_client_notification_handler(wiced_bt_gatt_operation_complete_t *p_data);
-
 void gatt_client_indication_handler(wiced_bt_gatt_operation_complete_t *p_data);
 void time_client_indication_handler(wiced_bt_gatt_operation_complete_t *p_data);
 void findme_client_indication_handler(wiced_bt_gatt_operation_complete_t *p_data);
-void ancs_client_indication_handler(wiced_bt_gatt_operation_complete_t *p_data);
-void ams_client_indication_handler(wiced_bt_gatt_operation_complete_t *p_data);
-
-void ancs_perform_action( uint32_t uid, uint32_t action_id );
 
 void le_slave_app_init(void);
 void le_slave_connection_up(wiced_bt_gatt_connection_status_t *p_conn_status);

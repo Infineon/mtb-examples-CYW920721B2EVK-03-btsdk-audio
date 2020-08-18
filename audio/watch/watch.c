@@ -144,6 +144,8 @@
 #include "wiced_bt_sdp.h"
 #include "wiced_bt_avrc_defs.h"
 #include "wiced_bt_avrc.h"
+#include "wiced_bt_ams.h"
+#include "wiced_bt_ancs.h"
 #include "wiced_timer.h"
 #include "hci_control.h"
 #include "hci_control_test.h"
@@ -182,6 +184,10 @@
 #endif
 #ifdef AUDIO_SHIELD_EVK_VER
 #include "wiced_audio_manager.h"
+#endif
+#if (WICED_APP_HFP_AG_INCLUDED == WICED_TRUE)
+#include "hci_control_hfp_ag.h"
+#include "wiced_bt_hfp_ag.h"
 #endif
 
 /*****************************************************************************
@@ -224,6 +230,13 @@ hci_control_cb_t  hci_control_cb;
 
 wiced_transport_buffer_pool_t* transport_pool;   // Trans pool for sending the RFCOMM data to host
 wiced_bt_buffer_pool_t*        p_key_info_pool;  //Pool for storing the  key info
+
+// memory optimizations
+#if defined(CYW43012C0)
+uint8_t g_wiced_memory_pre_init_enable = 1;
+uint8_t g_wiced_memory_pre_init_max_ble_connections = 4;
+uint8_t g_wiced_memory_pre_init_num_ble_rl = 16;
+#endif
 
 /******************************************************
  *               Function Declarations
@@ -354,9 +367,13 @@ void hci_control_init( void )
 #ifdef NO_PUART_SUPPORT
     wiced_set_debug_uart(WICED_ROUTE_DEBUG_TO_WICED_UART);
 #else
+    wiced_hal_puart_init();
     wiced_set_debug_uart( WICED_ROUTE_DEBUG_TO_PUART );
 #if ( defined(CYW20706A2) )
+    wiced_hal_puart_set_baudrate( 3000000 );
     wiced_hal_puart_select_uart_pads( WICED_PUART_RXD, WICED_PUART_TXD, 0, 0);
+#else
+    wiced_hal_puart_configuration( 3000000, PARITY_NONE, STOP_BIT_2 );
 #endif // CYW20706A2
 #endif // CYW43012C0
 #endif // WICED_BT_TRACE_ENABLE
@@ -549,6 +566,12 @@ void hci_control_write_eir( void )
     UINT16_TO_STREAM(p, UUID_SERVCLASS_AV_REMOTE_CONTROL);  nb_uuid++;
     UINT16_TO_STREAM(p, UUID_SERVCLASS_AUDIO_SINK);         nb_uuid++;
 #endif
+#if (WICED_APP_HFP_AG_INCLUDED == WICED_TRUE)
+    UINT16_TO_STREAM(p, UUID_SERVCLASS_HEADSET);            nb_uuid++;
+    UINT16_TO_STREAM(p, UUID_SERVCLASS_HF_HANDSFREE);       nb_uuid++;
+    UINT16_TO_STREAM(p, UUID_SERVCLASS_GENERIC_AUDIO);      nb_uuid++;
+#endif
+
     /* Now, we can update the UUID Tag's length */
     UINT8_TO_STREAM(p_tmp, (nb_uuid * LEN_UUID_16) + 1);
 
@@ -642,6 +665,11 @@ wiced_result_t hci_control_management_callback( wiced_bt_management_evt_t event,
                 hci_control_rc_target_init();
                 wiced_bt_avrc_tg_register();
             }
+#endif
+#if (WICED_TRUE == WICED_APP_HFP_AG_INCLUDED)
+            /* Perform the rfcomm init before hf start up */
+            wiced_bt_rfcomm_init( 200, 5 );
+            hci_control_ag_init();
 #endif
             // Disable while streaming audio over the uart.
             wiced_bt_dev_register_hci_trace( hci_control_hci_packet_cback );
@@ -831,11 +859,89 @@ wiced_result_t hci_control_management_callback( wiced_bt_management_evt_t event,
                     p_power_mgmt_notification->status, p_power_mgmt_notification->hci_status);
             break;
 
+#if (WICED_APP_HFP_AG_INCLUDED == WICED_TRUE)
+        case BTM_SCO_CONNECTED_EVT:
+        case BTM_SCO_DISCONNECTED_EVT:
+        case BTM_SCO_CONNECTION_REQUEST_EVT:
+        case BTM_SCO_CONNECTION_CHANGE_EVT:
+            hfp_ag_sco_management_callback( event, p_event_data );
+            break;
+#endif
+
         default:
             result = WICED_BT_USE_DEFAULT_SECURITY;
             break;
     }
     return result;
+}
+
+/*
+ * Process HCI commands from the MCU
+ */
+static void hci_control_ams_handle_command(uint16_t opcode, uint8_t *p_data, uint16_t payload_len)
+{
+    uint8_t status = HCI_CONTROL_STATUS_SUCCESS;
+    uint8_t ams_remote_command_id;
+
+    WICED_BT_TRACE("cmd_opcode 0x%02x\n", opcode);
+
+    switch (opcode)
+    {
+    case HCI_CONTROL_AVRC_CONTROLLER_COMMAND_PLAY:
+        ams_remote_command_id = AMS_REMOTE_COMMAND_ID_PLAY;
+        break;
+    case HCI_CONTROL_AVRC_CONTROLLER_COMMAND_PAUSE:
+        ams_remote_command_id = AMS_REMOTE_COMMAND_ID_PAUSE;
+        break;
+    case HCI_CONTROL_AVRC_CONTROLLER_COMMAND_NEXT_TRACK:
+        ams_remote_command_id = AMS_REMOTE_COMMAND_ID_NEXT_TRACK;
+        break;
+    case HCI_CONTROL_AVRC_CONTROLLER_COMMAND_PREVIOUS_TRACK:
+        ams_remote_command_id = AMS_REMOTE_COMMAND_ID_PREVIOUS_TRACK;
+        break;
+    case HCI_CONTROL_AVRC_CONTROLLER_COMMAND_VOLUME_UP:
+        ams_remote_command_id = AMS_REMOTE_COMMAND_ID_VOLUME_UP;
+        break;
+    case HCI_CONTROL_AVRC_CONTROLLER_COMMAND_VOLUME_DOWN:
+        ams_remote_command_id = AMS_REMOTE_COMMAND_ID_VOLUME_DOWN;
+        break;
+    case HCI_CONTROL_AVRC_CONTROLLER_COMMAND_SET_REPEAT_MODE:
+        ams_remote_command_id = AMS_REMOTE_COMMAND_ID_ADVANCED_REPEAT_MODE;
+        break;
+    case HCI_CONTROL_AVRC_CONTROLLER_COMMAND_SET_SHUFFLE_MODE:
+        ams_remote_command_id = AMS_REMOTE_COMMAND_ID_ADVANCED_SHUFFLE_MODE;
+        break;
+    case HCI_CONTROL_AVRC_CONTROLLER_COMMAND_BEGIN_FAST_FORWARD:
+        ams_remote_command_id = AMS_REMOTE_COMMAND_ID_SKIP_FORWARD;
+        break;
+    case HCI_CONTROL_AVRC_CONTROLLER_COMMAND_BEGIN_REWIND:
+        ams_remote_command_id = AMS_REMOTE_COMMAND_ID_SKIP_BACKWARD;
+        break;
+
+    default:
+        status = HCI_CONTROL_STATUS_UNKNOWN_COMMAND;
+        break;
+    }
+
+    if (status == HCI_CONTROL_STATUS_SUCCESS)
+    {
+        wiced_bt_ams_client_send_remote_command(ams_remote_command_id);
+    }
+
+    hci_control_send_command_status_evt(HCI_CONTROL_AVRC_CONTROLLER_EVENT_COMMAND_STATUS, status);
+}
+
+/*
+ * Process HCI commands from the MCU
+ */
+static void hci_control_ancs_handle_command(uint16_t opcode, uint8_t *p_data, uint16_t payload_len)
+{
+    wiced_bool_t result;
+
+    result = wiced_ancs_client_send_remote_command(p_data[0] + (p_data[1] << 8) + (p_data[2] << 16) + (p_data[3] << 24), p_data[4]);
+
+    hci_control_send_command_status_evt(HCI_CONTROL_ANCS_EVENT_COMMAND_STATUS,
+                                        result ? HCI_CONTROL_STATUS_SUCCESS : HCI_CONTROL_STATUS_FAILED );
 }
 
 /*
@@ -903,7 +1009,7 @@ static uint32_t hci_control_proc_rx_cmd( uint8_t *p_buffer, uint32_t length )
         {
 #endif
 #if (WICED_APP_LE_SLAVE_CLIENT_INCLUDED == WICED_TRUE)
-        if ( hci_control_is_ams_connection_up() )
+        if ( wiced_bt_ams_client_connection_check() )
         {
             hci_control_ams_handle_command( opcode, p_data, payload_len );
         }
@@ -926,6 +1032,12 @@ static uint32_t hci_control_proc_rx_cmd( uint8_t *p_buffer, uint32_t length )
 #if (WICED_APP_ANCS_INCLUDED == WICED_TRUE)
     case HCI_CONTROL_GROUP_ANCS:
         hci_control_ancs_handle_command( opcode, p_data, payload_len );
+        break;
+#endif
+
+#if (WICED_APP_HFP_AG_INCLUDED == WICED_TRUE)
+    case HCI_CONTROL_GROUP_AG:
+        hci_control_ag_handle_command( opcode, p_data, payload_len );
         break;
 #endif
 

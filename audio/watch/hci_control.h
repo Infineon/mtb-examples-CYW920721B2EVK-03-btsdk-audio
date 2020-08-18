@@ -232,13 +232,6 @@ extern wiced_result_t app_avrc_hci_control_volume(uint8_t* p_data, uint32_t len)
 /* Events provided by hci_control_rc_target.c */
 extern wiced_result_t hci_control_send_avrc_target_event( int type, uint16_t handle );
 
-/* Events provided by ancs_client */
-extern void hci_control_ancs_handle_command(uint16_t opcode, uint8_t *p_data, uint16_t payload_len);
-
-/* Events provided by ams_client */
-extern wiced_bool_t hci_control_is_ams_connection_up ( void );
-extern void         hci_control_ams_handle_command(uint16_t opcode, uint8_t *p_data, uint16_t payload_len);
-
 extern void wiced_bt_trace_array( const char *string, const uint8_t* array, const uint16_t len );
 extern void hci_control_le_enable( void );
 extern void le_slave_encryption_status_changed(wiced_bt_dev_encryption_status_t *p_status);

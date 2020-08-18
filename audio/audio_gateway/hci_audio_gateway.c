@@ -202,6 +202,8 @@ extern uint8_t  avrc_is_abs_volume_capable( void );
  */
 APPLICATION_START( )
 {
+    wiced_result_t ret = WICED_BT_ERROR;
+
     wiced_transport_init( &transport_cfg );
 
 #ifdef WICED_BT_TRACE_ENABLE
@@ -235,9 +237,14 @@ APPLICATION_START( )
     WICED_BT_TRACE( "#######################\n" );
 
     /* Register the dynamic configurations */
-    wiced_bt_stack_init( hci_control_management_callback, &hci_ag_cfg_settings, hci_ag_cfg_buf_pools);
+    ret = wiced_bt_stack_init( hci_control_management_callback, &hci_ag_cfg_settings, hci_ag_cfg_buf_pools);
+    if( ret != WICED_BT_SUCCESS )
+        return;
+
     /* Configure Audio buffer */
-    wiced_audio_buffer_initialize (hci_ag_audio_buf_config);
+    ret = wiced_audio_buffer_initialize (hci_ag_audio_buf_config);
+    if( ret != WICED_BT_SUCCESS )
+        return;
 }
 
 #define DEBOUNCE_TIME           100     /* unit: ms */

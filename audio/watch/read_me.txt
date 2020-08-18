@@ -4,8 +4,8 @@ Watch app
 
 Overview
 --------
-This app demonstrates Bluetooth A2DP source, AVRCP Controller/Target, Apple Media Service (AMS) and
-Apple Notification Center Service (ANCS).
+This app demonstrates Bluetooth A2DP source, AVRCP Controller/Target, Apple Media Service (AMS),
+Apple Notification Center Service (ANCS), and HFP Audio Gateway.
 Features demonstrated
  - WICED BT A2DP Source APIs
  - WICED BT AVRCP (Controller/Target) APIs
@@ -13,6 +13,7 @@ Features demonstrated
  - Apple Media Service and Apple Notification Client Services (AMS and ANCS)
  - Handling of the UART WICED protocol
  - SDP and GATT descriptor/attribute configuration
+ - WICED BT SCO/RFCOMM initiator APIs and HFP Audio Gateway role
 
 See chip specific readme for more information about the BT SDK.
 
@@ -94,6 +95,16 @@ BLE Client:
    "Write no rsp" : Write hex value without response to remote handle
    "Value Notify" : Write notification value to the remote handle
    "Value Indicate" : Write indication value to the remote handle
+
+HFP Audio Gateway:
+- Targets with chips 20721B2, 20719B2, and 43012C0 support HFP Audio Gateway.
+- The Watch app can demonstrate how to use HFP AG as below.
+- Make a HFP Headset (headphone or earbuds) discoverable and pairable by its specific behavior.
+- In ClientControl, click on "Start" button for "BR/EDR Discovery" combo box to find the Headset device.
+- Select the peer device in the BR/EDR Discovery combo box.
+- Click "Connect" button under AG tab.
+- Click "Audio Connect" button. AG will create a SCO connection to Headset, wide-band speech supported.
+- Click "Audio Disconnect" button to remove SCO connection.
 
 Project Settings
 ----------------

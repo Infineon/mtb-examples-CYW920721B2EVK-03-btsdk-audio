@@ -117,6 +117,9 @@ void hci_control_misc_handle_get_version( void )
     tx_buf[cmd++] = HCI_CONTROL_GROUP_AVRC_CONTROLLER;
     tx_buf[cmd++] = HCI_CONTROL_GROUP_AMS;
     tx_buf[cmd++] = HCI_CONTROL_GROUP_AVRC_TARGET;
+#if (WICED_APP_HFP_AG_INCLUDED == WICED_TRUE)
+    tx_buf[cmd++] = HCI_CONTROL_GROUP_AG;
+#endif
 
     wiced_transport_send_data( HCI_CONTROL_MISC_EVENT_VERSION, tx_buf, cmd );
 }
